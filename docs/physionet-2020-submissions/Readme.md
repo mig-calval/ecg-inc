@@ -1,0 +1,1 @@
+The zips can be found at the bottom of [The PhysioNet/Computing in Cardiology Challenge 2020](https://physionet.org/content/challenge-2020/1.0.2/).

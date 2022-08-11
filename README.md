@@ -1,2 +1,1 @@
-# ecg-inc
-Diagnoses Classification via ECGs.
+# ecg-inc : Diagnoses Classification via ECGs.

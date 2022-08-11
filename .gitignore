@@ -1,3 +1,5 @@
+### Original .gitignore Python template that Github provides
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -127,3 +129,22 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+### Modifications that serve this project
+
+# data files
+*.dat
+*.mat
+*.hea
+*.zip
+
+# INC patients' files
+**data/INC
+
+# Some articles; they will be referenced
+# given an investigation article is done
+**docs/articles
+
+# The submissions for the Physionet Challenge
+**1_Prna/
+**2_Between_a_ROC_and_a_heart_place/
