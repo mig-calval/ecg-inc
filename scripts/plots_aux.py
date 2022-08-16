@@ -276,3 +276,25 @@ def compare_2_ecgs(filename_1, filename_2, requirements, ylim_1 = (-5,5),  ylim_
     
     plot_ecg(example_1[0], ylim=ylim_1, figsize=(16,6))
     plot_ecg(example_2[0], ylim=ylim_2, figsize=(16,6))
+
+def plot_model_history(fitted_model):
+
+    fig, axs = plt.subplots(1,2, figsize = (16, 5))
+
+    n_epochs = len(fitted_model.history['loss'])
+
+    # Loss
+    loss_df = pd.DataFrame({'train' : fitted_model.history['loss'],
+                            'val' : fitted_model.history['val_loss']})
+    axs[0].plot(loss_df)
+    axs[0].set_xlabel('epoch')
+    axs[0].set_title('Loss', fontsize = 18)
+    axs[0].legend(['train', 'val'], frameon=False, fontsize=12)
+
+    # Accuracy
+    acc_df = pd.DataFrame({'train' : fitted_model.history['accuracy'],
+                        'val' : fitted_model.history['val_accuracy']})
+    axs[1].plot(acc_df)
+    axs[1].set_xlabel('epoch')
+    axs[1].set_title('Accuracy', fontsize = 18)
+    axs[1].legend(['train', 'val'], frameon=False, fontsize=12)

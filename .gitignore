@@ -138,6 +138,10 @@ dmypy.json
 *.hea
 *.zip
 
+# other files
+*.pptx
+
+
 # INC patients' files
 **data/INC
 
