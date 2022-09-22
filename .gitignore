@@ -141,6 +141,11 @@ dmypy.json
 # other files
 *.pptx
 
+# Models (we will not upload every model we try
+# since they would incurr too much space in GH)
+# We will begin uploading models when they show
+# better results
+*.h5
 
 # INC patients' files
 **data/INC
@@ -152,3 +157,9 @@ dmypy.json
 # The submissions for the Physionet Challenge
 **1_Prna/
 **2_Between_a_ROC_and_a_heart_place/
+
+# https://www.nature.com/articles/s41467-020-15432-4#data-availability
+**antonior92-models/
+
+# To Do file
+**todo.xlsx

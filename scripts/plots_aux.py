@@ -2,9 +2,19 @@ import os
 import numpy as np
 import pandas as pd
 import wfdb
+
+import random
+
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import seaborn as sns
+
+from sklearn.metrics import confusion_matrix
+
+import scipy.signal
+
+
 
 # This is the order of the 12 signals for each file.
 signals = ['I', 'II', 'III', 'AVL', 'AVR', 'AVF', 'V1', 'V2','V3','V4','V5', 'V6']
@@ -138,9 +148,14 @@ def plot_ecg(waves, ylim=(-6,6), figsize=(16,10), metadata=None, dims=[6, 2], sh
     # Add additional information that will appear on the title, as well as choose to save
     # the plot on a given path.
 
-    if isinstance(metadata, dict):
+    if isinstance(metadata, dict):        
         
         metadata_ = get_metadata(metadata["info"], metadata["labels"])
+
+        # Correct very long lists so that there is an "enter" between the dx
+        if len(metadata_['dx']) > 5:            
+            metadata_['dx'] = '[' + ', '.join(metadata_['dx'][:5]) + ',\n' + ', '.join(metadata_['dx'][5:]) + ']'
+
         sex_corr = "    " if str(metadata_['sex']) == "Male" else "" # Add spaces if it's Male
         meta_title = "Dimensions:                " + str(metadata_['dimension']) + "\n" \
                    + "Duration (seconds):             " + str(metadata_['duration'])  + "\n" \
@@ -277,24 +292,279 @@ def compare_2_ecgs(filename_1, filename_2, requirements, ylim_1 = (-5,5),  ylim_
     plot_ecg(example_1[0], ylim=ylim_1, figsize=(16,6))
     plot_ecg(example_2[0], ylim=ylim_2, figsize=(16,6))
 
-def plot_model_history(fitted_model):
 
-    fig, axs = plt.subplots(1,2, figsize = (16, 5))
+def plot_model_history(fitted_model, metrics={'titles':['Loss', 'Accuracy'], 'metrics':['loss', 'accuracy']}):
 
-    n_epochs = len(fitted_model.history['loss'])
+    fig, axs = plt.subplots(1,2, figsize = (16, 5))    
 
     # Loss
-    loss_df = pd.DataFrame({'train' : fitted_model.history['loss'],
-                            'val' : fitted_model.history['val_loss']})
+    loss_df = pd.DataFrame({'train' : fitted_model[metrics['metrics'][0]],
+                            'val' : fitted_model['val_'+metrics['metrics'][0]]})
     axs[0].plot(loss_df)
     axs[0].set_xlabel('epoch')
-    axs[0].set_title('Loss', fontsize = 18)
+    axs[0].set_title(metrics['titles'][0], fontsize = 18)
     axs[0].legend(['train', 'val'], frameon=False, fontsize=12)
 
     # Accuracy
-    acc_df = pd.DataFrame({'train' : fitted_model.history['accuracy'],
-                        'val' : fitted_model.history['val_accuracy']})
+    acc_df = pd.DataFrame({'train' : fitted_model[metrics['metrics'][1]],
+                           'val' : fitted_model['val_'+metrics['metrics'][1]]})
     axs[1].plot(acc_df)
     axs[1].set_xlabel('epoch')
-    axs[1].set_title('Accuracy', fontsize = 18)
+    axs[1].set_title(metrics['titles'][1], fontsize = 18)
     axs[1].legend(['train', 'val'], frameon=False, fontsize=12)
+
+
+### The following 2 can be generalized but for the moment we leave them as they are for convenience
+
+def plot_confusion_matrix(model, x, y, y_labels, n_ex = None, random_state=203129, thresholds=None, return_cm=False):
+
+    if isinstance(x, tuple):
+        deep = x[0]
+        wide = x[1]
+        
+
+    else:
+        deep = x
+
+    if n_ex is None:
+        indices = np.arange(0, deep.shape[0], 1)
+
+    else:
+        random.seed(random_state)
+        indices = random.sample(range(deep.shape[0]), n_ex)
+
+    if thresholds is not None:
+
+        if 'PTB-XL' in thresholds.keys():
+
+            thresholds = thresholds['PTB-XL']
+
+            if isinstance(x, tuple):
+                probs  = model.predict((deep[indices], wide[indices]))
+
+            else:
+                probs  = model.predict(deep[indices])
+
+            preds = np.copy(probs)
+
+            for k in range(n_ex):                                
+
+                if probs[k, thresholds['MI']['idx']] > thresholds['MI']['threshold']:
+                    preds[k, thresholds['MI']['idx']] = 1
+
+                elif probs[k, thresholds['MI&STTC']['idx']] > thresholds['MI&STTC']['threshold']:
+                    preds[k, thresholds['MI&STTC']['idx']] = 1
+                    # print(probs[k])                
+                    
+            
+            preds = preds.argmax(1)
+            preds = preds.astype(int)
+
+    else:
+        if isinstance(x, tuple):
+                preds  = model.predict((deep[indices], wide[indices]))
+
+        else:
+            preds  = model.predict(deep[indices])
+        preds = preds.argmax(1)
+        preds = preds.astype(int)
+
+    trues = y[indices].argmax(1)
+
+    cm = confusion_matrix(trues, preds)
+
+    if return_cm:
+        return cm
+
+    group_counts = ["{0:0.0f}".format(value) for value in cm.flatten()]
+
+    group_percentages = ["{0:.2%}".format(value) for value in
+                        ((cm.transpose()/cm.sum(1)).transpose()).flatten()]    
+
+    labels = [f"{v1}\n{v2}" for v1, v2 in zip(group_counts,group_percentages)]
+
+    labels = np.asarray(labels).reshape(y.shape[1],y.shape[1])
+
+
+    fig, ax = plt.subplots(figsize = (8,8))
+
+    ax = sns.heatmap(cm,
+                annot=labels, 
+                fmt='',
+                cmap='Blues',
+                annot_kws = {'fontsize':14})
+
+        
+    ax.set_title('Confusion Matrix\n', fontsize = 20);
+    ax.set_xlabel('\nPredicted Values', labelpad = 18, fontsize = 16)
+    ax.set_ylabel('Actual Values', labelpad = 20, fontsize = 16);
+
+    ## Ticket labels - List must be in alphabetical order
+    ax.xaxis.set_ticklabels(y_labels, fontsize = 14)
+    ax.yaxis.set_ticklabels(y_labels, fontsize = 14, rotation = 45)
+
+
+def plot_confusion_matrix_mi(model, x, y, y_labels, n_ex = None, random_state=203129, thresholds=None, return_cm=False):
+
+    if isinstance(x, tuple):
+        deep = x[0]
+        wide = x[1]
+        
+
+    else:
+        deep = x
+
+    if n_ex is None:
+        indices = np.arange(0, deep.shape[0], 1)
+
+    else:
+        random.seed(random_state)
+        indices = random.sample(range(deep.shape[0]), n_ex)
+
+    if thresholds is not None:
+
+        if 'PTB-XL' in thresholds.keys():
+
+            thresholds = thresholds['PTB-XL']
+
+            if isinstance(x, tuple):
+                probs  = model.predict((deep[indices], wide[indices]))
+
+            else:
+                probs  = model.predict(deep[indices])
+
+            preds = np.copy(probs)
+
+            for k in range(n_ex):                                
+
+                if probs[k, thresholds['MI']['idx']] > thresholds['MI']['threshold']:
+                    preds[k, thresholds['MI']['idx']] = 1
+
+                # elif probs[k, thresholds['MI&STTC']['idx']] > thresholds['MI&STTC']['threshold']:
+                #     preds[k, thresholds['MI&STTC']['idx']] = 1
+                #     # print(probs[k])                
+                    
+            
+            preds = preds.argmax(1)
+            preds = preds.astype(int)
+
+    else:
+        if isinstance(x, tuple):
+                preds  = model.predict((deep[indices], wide[indices]))
+
+        else:
+            preds  = model.predict(deep[indices])
+        preds = preds.argmax(1)
+        preds = preds.astype(int)
+
+    trues = y[indices].argmax(1)
+
+    cm = confusion_matrix(trues, preds)
+
+    if return_cm:
+        return cm
+
+    group_counts = ["{0:0.0f}".format(value) for value in cm.flatten()]
+
+    group_percentages = ["{0:.2%}".format(value) for value in
+                        ((cm.transpose()/cm.sum(1)).transpose()).flatten()]    
+
+    labels = [f"{v1}\n{v2}" for v1, v2 in zip(group_counts,group_percentages)]
+
+    labels = np.asarray(labels).reshape(y.shape[1],y.shape[1])
+
+
+    fig, ax = plt.subplots(figsize = (8,8))
+
+    ax = sns.heatmap(cm,
+                annot=labels, 
+                fmt='',
+                cmap='Blues',
+                annot_kws = {'fontsize':14})
+
+        
+    ax.set_title('Confusion Matrix\n', fontsize = 20);
+    ax.set_xlabel('\nPredicted Values', labelpad = 18, fontsize = 16)
+    ax.set_ylabel('Actual Values', labelpad = 20, fontsize = 16);
+
+    ## Ticket labels - List must be in alphabetical order
+    ax.xaxis.set_ticklabels(y_labels, fontsize = 14)
+    ax.yaxis.set_ticklabels(y_labels, fontsize = 14, rotation = 45)
+
+
+def plot_spectogram(y, fs=500, nperseg=200, noverlap=100):
+
+    # https://github.com/awerdich/physionet/blob/master/physionet_processing.py
+
+    # Calculate the spectogram
+    frequency, time, amplitude = scipy.signal.spectrogram(y, fs=fs, nperseg=nperseg, noverlap=noverlap)
+
+    fig, axs = plt.subplots(1,2, figsize=(12,6))
+
+    # No log 
+    plt.sca(axs[0])
+    plt.pcolormesh(time, frequency, amplitude, shading='gouraud', cmap='jet')
+    plt.ylabel('Frequency [Hz]')
+    plt.xlabel('Time [sec]')
+    plt.title('Without log')
+
+    # With log
+    amplitude = abs(amplitude)
+    mask = amplitude > 0
+    amplitude[mask] = np.log(amplitude[mask])
+
+    plt.sca(axs[1])
+    plt.pcolormesh(time, frequency, amplitude, shading='gouraud', cmap='jet')
+    plt.ylabel('Frequency [Hz]')
+    plt.xlabel('Time [sec]')
+    plt.title('With log');
+
+
+def plot_smoothing_evolution(x, y, y_smoothed, y_new, y_quantiles, y_butter):
+
+    fig, axs = plt.subplots(3,2, figsize=(20,10))
+
+    fig.subplots_adjust(hspace = 0.45, wspace=0.1)
+
+    ylim = (y.min(), y.max())
+    axs[0, 0].plot(x, y, alpha = 0.3)
+    axs[0, 0].plot(x, y_smoothed, linewidth=3)
+    axs[0, 0].set_ylim(ylim)
+    axs[0, 0].set_title("Original vs Smoothed (full range)")
+
+    ylim = (y_new.min(), y_new.max())
+    # ylim = (-2, 2)
+    axs[1, 0].plot(x, y, alpha = 0.3)
+    axs[1, 0].plot(x, y_new)
+    axs[1, 0].set_ylim(ylim)
+    axs[1, 0].set_title("Original vs Corrected")
+
+    ylim = (y_new.min(), y_new.max())
+    # ylim = (-2, 2)
+    axs[0, 1].plot(x, y, alpha = 0.3)
+    axs[0, 1].plot(x, y_smoothed, linewidth=3)
+    axs[0, 1].set_ylim(ylim)
+    axs[0, 1].set_title("Original vs Smoothed (zoomed)")
+
+    ylim = (y_new.min(), y_new.max())
+    # ylim = (-2, 2)
+    axs[1, 1].plot(x, y, alpha = 0.3)
+    axs[1, 1].plot(x, y_quantiles)
+    axs[1, 1].set_ylim(ylim)
+    axs[1, 1].set_title("Original vs Corrected + Quantiles")
+
+    ylim = (y_new.min(), y_new.max())
+    # ylim = (-2, 2)
+    axs[2, 0].plot(x, y, alpha = 0.3)
+    axs[2, 0].plot(x, y_butter)
+    axs[2, 0].set_ylim(ylim)
+    axs[2, 0].set_title("Original vs Corrected + Quantiles + Butter")
+
+    ylim = (y_butter.min(), y_butter.max())
+    # ylim = (-2, 2)
+    axs[2, 1].plot(x, y_quantiles, alpha = 0.3)
+    axs[2, 1].plot(x, y_butter)
+    axs[2, 1].set_ylim(ylim)
+    axs[2, 1].set_title("Corrected + Quantiles vs Corrected + Quantiles + Butter")
+
+    plt.show()
